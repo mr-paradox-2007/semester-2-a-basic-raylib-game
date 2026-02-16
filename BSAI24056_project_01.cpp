@@ -1,5 +1,4 @@
 #include <iostream>
-#include <conio.h>
 #include "raylib.h"
 using namespace std;
 
@@ -1139,35 +1138,10 @@ void title_screen()
 }
 int main() 
 {
-    cout << "Press 1 for Full for Fullscreen\nPress 2 for Regular Screen\nPress 3 for Custom Resolution";
-    char c;
-    while (true) 
-    {
-        c = _getch();
-        if (c == '1' || c == '2' || c == '3')
-            break;
-    }
-    if (c == '1')
-    {
-        S_W = 1920;
-        S_H = 1080;
-        SetConfigFlags(FLAG_VSYNC_HINT);
-        InitWindow(S_W, S_H, "DARK REFLECTION");
-        ToggleFullscreen();
-    }
-    else if (c == '2') 
-    {
-        InitWindow(S_W, S_H, "DARK REFLECTION");
-    }
-    else if (c == '3') 
-    {
-        cout << "\n16:9 Ratio Recommended";
-        cout << "\nEnter Width:";
-        cin >> S_W;
-        cout << "\nEnter Height:";
-        cin >> S_H;
-        InitWindow(S_W, S_H, "DARK REFLECTION");
-    }
+    S_W = 1920;
+    S_H = 1080;
+    
+    InitWindow(S_W, S_H, "DARK REFLECTION");
     InitAudioDevice();
     
     trainSfx = LoadSound("Assets/Sounds/Train_Sfx.mp3");
@@ -1184,5 +1158,5 @@ int main()
     SetTargetFPS(60);
     title_screen();
     CloseWindow();
-    exit(0);
+    return(0);
 }
