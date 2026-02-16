@@ -1,5 +1,6 @@
 #include <iostream>
 #include "raylib.h"
+#include <cmath>
 
 // Platform-specific includes
 #ifdef __EMSCRIPTEN__
@@ -24,13 +25,18 @@ enum GameScreen
 // =============================================================================
 // GLOBAL CONFIGURATION
 // =============================================================================
-int S_W = 1920;
-int S_H = 1080;
+const int GAME_WIDTH = 1920;   // Virtual game resolution
+const int GAME_HEIGHT = 1080;
+int screenWidth = 1280;        // Actual window size (can be changed)
+int screenHeight = 720;
 bool has_music = true;
 bool has_sfx = true;
 
 GameScreen currentScreen = TITLE;
 GameScreen previousScreen = TITLE;
+
+RenderTexture2D target;  // Virtual screen rendering target
+float scale = 1.0f;
 
 // =============================================================================
 // STRUCTS
@@ -168,7 +174,7 @@ double respawnTimer3 = 0.0, respawnDelay3 = 5.0;
 double respawnTimer4 = 0.0, respawnDelay4 = 5.0;
 bool trainPlayed = false;
 
-// UI Buttons
+// UI Buttons (in virtual coordinates)
 Rectangle btn_title_start = { 1480, 250, 410, 230 };
 Rectangle btn_title_settings = { 1480, 530, 410, 230 };
 Rectangle btn_title_quit = { 1480, 780, 410, 230 };
@@ -189,9 +195,30 @@ void enemy_4_control(enemy& enm);
 // =============================================================================
 // UTILITY FUNCTIONS
 // =============================================================================
+Vector2 GetScaledMousePosition()
+{
+    Vector2 mouse = GetMousePosition();
+    
+    // Calculate scale and offset for letterboxing
+    float scaleX = (float)screenWidth / GAME_WIDTH;
+    float scaleY = (float)screenHeight / GAME_HEIGHT;
+    float scale = fminf(scaleX, scaleY);
+    
+    float offsetX = (screenWidth - (GAME_WIDTH * scale)) * 0.5f;
+    float offsetY = (screenHeight - (GAME_HEIGHT * scale)) * 0.5f;
+    
+    // Convert screen coordinates to virtual coordinates
+    Vector2 virtualMouse;
+    virtualMouse.x = (mouse.x - offsetX) / scale;
+    virtualMouse.y = (mouse.y - offsetY) / scale;
+    
+    return virtualMouse;
+}
+
 bool is_button_clicked(Rectangle btn)
 {
-    return CheckCollisionPointRec(GetMousePosition(), btn) && IsMouseButtonPressed(MOUSE_LEFT_BUTTON);
+    Vector2 mousePos = GetScaledMousePosition();
+    return CheckCollisionPointRec(mousePos, btn) && IsMouseButtonPressed(MOUSE_LEFT_BUTTON);
 }
 
 Rectangle get_hitbox(const enemy_bullets& eb)
@@ -238,8 +265,25 @@ Rectangle get_hitbox(const enemy_bullets& eb)
 // =============================================================================
 void InitGame()
 {
-    // Load Audio
+    #ifdef __EMSCRIPTEN__
+    cout << "Step 1: Starting InitGame..." << endl;
+    #endif
+    
+    // Initialize render texture for virtual screen
+    target = LoadRenderTexture(GAME_WIDTH, GAME_HEIGHT);
+    SetTextureFilter(target.texture, TEXTURE_FILTER_BILINEAR);
+    
+    #ifdef __EMSCRIPTEN__
+    cout << "Step 2: Render texture created..." << endl;
+    #endif
+    
+    // Load Audio - with safety checks
     trainSfx = LoadSound("Assets/Sounds/Train_Sfx.mp3");
+    
+    #ifdef __EMSCRIPTEN__
+    cout << "Step 3: Loading enemy sounds..." << endl;
+    #endif
+    
     enemyDieSfx[0] = LoadSound("Assets/Sounds/Enemy1_Die_Sfx.mp3");
     enemyDieSfx[1] = LoadSound("Assets/Sounds/Enemy2_Die_Sfx.mp3");
     enemyDieSfx[2] = LoadSound("Assets/Sounds/Enemy3_Die_Sfx.mp3");
@@ -250,24 +294,36 @@ void InitGame()
     enemyShootSfx[3] = LoadSound("Assets/Sounds/Enemy4_Shooting_Sfx.mp3");
     playerShootSfx = LoadSound("Assets/Sounds/Player_Shooting_Sfx.mp3");
     playerDieSfx = LoadSound("Assets/Sounds/Player_Die_Sfx.mp3");
+    
+    #ifdef __EMSCRIPTEN__
+    cout << "Step 4: Sounds loaded..." << endl;
+    #endif
 
     // Load Title Screen
+    #ifdef __EMSCRIPTEN__
+    cout << "Step 5: Loading title screen..." << endl;
+    #endif
+    
     title_bg.x = 0;
     title_bg.y = 0;
-    title_bg.h = S_H;
-    title_bg.w = S_W;
+    title_bg.h = GAME_HEIGHT;
+    title_bg.w = GAME_WIDTH;
     title_bg.txr = LoadTexture("Assets/Title/Title_Screen.png");
-    title_bg.txr.height = title_bg.h;
-    title_bg.txr.width = title_bg.w;
 
+    #ifdef __EMSCRIPTEN__
+    cout << "Step 6: Loading level select..." << endl;
+    #endif
+    
     // Load Level Select
     lvl_select_bg.x = 0;
     lvl_select_bg.y = 0;
-    lvl_select_bg.h = S_H;
-    lvl_select_bg.w = S_W;
+    lvl_select_bg.h = GAME_HEIGHT;
+    lvl_select_bg.w = GAME_WIDTH;
     lvl_select_bg.txr = LoadTexture("Assets/Level_Select/Level_Select.png");
-    lvl_select_bg.txr.height = lvl_select_bg.h;
-    lvl_select_bg.txr.width = lvl_select_bg.w;
+
+    #ifdef __EMSCRIPTEN__
+    cout << "Step 7: Loading backgrounds..." << endl;
+    #endif
 
     // Load Level 1 Backgrounds
     clouds.txr = LoadTexture("Assets/Level_1/Backgrounds/Clouds.png");
@@ -278,6 +334,10 @@ void InitGame()
     mountains2.txr = LoadTexture("Assets/Level_1/Backgrounds/Mountains.png");
     sky.txr = LoadTexture("Assets/Level_1/Backgrounds/Sky.png");
     train.txr = LoadTexture("Assets/Level_1/Backgrounds/Train.png");
+
+    #ifdef __EMSCRIPTEN__
+    cout << "Step 8: Loading player textures..." << endl;
+    #endif
 
     // Load Player Textures
     plr.txr_idle_right = LoadTexture("Assets/Level_1/Animations/Player_lvl_1_idle_right.png");
@@ -291,6 +351,10 @@ void InitGame()
     plr.txr_gun_jump_right = LoadTexture("Assets/Level_1/Animations/Player_lvl_1_gun_jump_right.png");
     plr.txr_gun_jump_left = LoadTexture("Assets/Level_1/Animations/Player_lvl_1_gun_jump_left.png");
 
+    #ifdef __EMSCRIPTEN__
+    cout << "Step 9: Loading obstacles and enemies..." << endl;
+    #endif
+
     // Load Obstacles
     sign1.txr = LoadTexture("Assets/Level_1/Dangers/High_Sign.png");
     sign2.txr = LoadTexture("Assets/Level_1/Dangers/Low_Sign.png");
@@ -300,6 +364,10 @@ void InitGame()
     enemy2.txr = LoadTexture("Assets/Level_1/Dangers/Enemy_lvl_1_shotgun.png");
     enemy3.txr = LoadTexture("Assets/Level_1/Dangers/Enemy_lvl_1_canon.png");
     enemy4.txr = LoadTexture("Assets/Level_1/Dangers/Enemy_lvl_1_rifle.png");
+    
+    #ifdef __EMSCRIPTEN__
+    cout << "Step 10: All assets loaded successfully!" << endl;
+    #endif
 }
 
 // =============================================================================
@@ -310,62 +378,46 @@ void ResetLevel1()
     // Reset backgrounds
     clouds.x = 0;
     clouds.y = -60;
-    clouds.h = S_H;
-    clouds.w = S_W;
-    clouds.txr.height = clouds.h;
-    clouds.txr.width = clouds.w;
+    clouds.h = GAME_HEIGHT;
+    clouds.w = GAME_WIDTH;
 
-    clouds2.x = -S_W;
+    clouds2.x = -GAME_WIDTH;
     clouds2.y = -60;
-    clouds2.h = S_H;
-    clouds2.w = S_W;
-    clouds2.txr.height = clouds2.h;
-    clouds2.txr.width = clouds2.w;
+    clouds2.h = GAME_HEIGHT;
+    clouds2.w = GAME_WIDTH;
 
     bridge.x = 0;
     bridge.y = 0;
-    bridge.h = S_H;
-    bridge.w = S_W;
-    bridge.txr.height = bridge.h;
-    bridge.txr.width = bridge.w;
+    bridge.h = GAME_HEIGHT;
+    bridge.w = GAME_WIDTH;
 
-    bridge2.x = -S_W;
+    bridge2.x = -GAME_WIDTH;
     bridge2.y = 0;
-    bridge2.h = S_H;
-    bridge2.w = S_W;
-    bridge2.txr.height = bridge2.h;
-    bridge2.txr.width = bridge2.w;
+    bridge2.h = GAME_HEIGHT;
+    bridge2.w = GAME_WIDTH;
 
     mountains.x = 0;
     mountains.y = 0;
-    mountains.h = S_H;
-    mountains.w = S_W;
-    mountains.txr.height = mountains.h;
-    mountains.txr.width = mountains.w;
+    mountains.h = GAME_HEIGHT;
+    mountains.w = GAME_WIDTH;
 
-    mountains2.x = -S_H;
+    mountains2.x = -GAME_HEIGHT;
     mountains2.y = 0;
-    mountains2.h = S_H;
-    mountains2.w = S_W;
-    mountains2.txr.height = mountains2.h;
-    mountains2.txr.width = mountains2.w;
+    mountains2.h = GAME_HEIGHT;
+    mountains2.w = GAME_WIDTH;
 
     sky.x = 0;
     sky.y = 0;
-    sky.h = S_H;
-    sky.w = S_W;
-    sky.txr.height = sky.h;
-    sky.txr.width = sky.w;
+    sky.h = GAME_HEIGHT;
+    sky.w = GAME_WIDTH;
 
     train.x = 0;
     train.y = -95;
-    train.h = S_H;
-    train.w = S_W;
-    train.txr.height = train.h;
-    train.txr.width = train.w;
+    train.h = GAME_HEIGHT;
+    train.w = GAME_WIDTH;
 
     // Reset player
-    plr.x = S_W / 2 - 500;
+    plr.x = GAME_WIDTH / 2 - 500;
     plr.y = 0;
     plr.h = 200;
     plr.w = 200;
@@ -377,52 +429,28 @@ void ResetLevel1()
     plr.gravity = 0.5f;
     plr.jump_force = 15;
     plr.txr = plr.txr_idle_right;
-    plr.txr_idle_right.height = plr.h;
-    plr.txr_idle_right.width = plr.w;
-    plr.txr_idle_left.height = plr.h;
-    plr.txr_idle_left.width = plr.w;
-    plr.txr_walk_right.height = plr.h;
-    plr.txr_walk_right.width = plr.w;
-    plr.txr_walk_left.height = plr.h;
-    plr.txr_walk_left.width = plr.w;
-    plr.txr_jump_right.height = plr.h;
-    plr.txr_jump_right.width = plr.w;
-    plr.txr_jump_left.height = plr.h;
-    plr.txr_jump_left.width = plr.w;
-    plr.txr_gun_left.height = plr.h;
-    plr.txr_gun_left.width = plr.w;
-    plr.txr_gun_right.height = plr.h;
-    plr.txr_gun_right.width = plr.w;
-    plr.txr_gun_jump_right.height = plr.h;
-    plr.txr_gun_jump_right.width = plr.w;
-    plr.txr_gun_jump_left.height = plr.h;
-    plr.txr_gun_jump_left.width = plr.w;
     plr.hb.x = plr.x;
     plr.hb.y = plr.y;
     plr.hb.box = Rectangle{ plr.x + plr.w / 4 + 20, plr.y + plr.h / 4, plr.w - plr.w / 2 - 40, plr.h - plr.h / 4 };
 
     // Reset obstacles
     sign1.start_x = -1500;
-    sign1.end_x = S_W + 100;
+    sign1.end_x = GAME_WIDTH + 100;
     sign1.x = sign1.start_x;
     sign1.y = -180;
-    sign1.h = S_H - 300;
-    sign1.w = S_W - 300;
-    sign1.txr.height = sign1.h;
-    sign1.txr.width = sign1.w;
+    sign1.h = GAME_HEIGHT - 300;
+    sign1.w = GAME_WIDTH - 300;
     sign1.hb.x = sign1.x;
     sign1.hb.y = sign1.y;
     sign1.hb.box = Rectangle{ sign1.x + 400, sign1.y + 600, sign1.w - 400, sign1.h - 500 };
     sign1.has_spawned = false;
 
     sign2.start_x = -1500;
-    sign2.end_x = S_W + 100;
+    sign2.end_x = GAME_WIDTH + 100;
     sign2.x = sign2.start_x;
     sign2.y = 300;
-    sign2.h = S_H - 300;
-    sign2.w = S_W - 300;
-    sign2.txr.height = sign2.h;
-    sign2.txr.width = sign2.w;
+    sign2.h = GAME_HEIGHT - 300;
+    sign2.w = GAME_WIDTH - 300;
     sign2.hb.x = sign2.x;
     sign2.hb.y = sign2.y;
     sign2.hb.box = Rectangle{ sign2.x + 400, sign2.y + 600, sign2.w - 400, sign2.h - 500 };
@@ -432,12 +460,10 @@ void ResetLevel1()
     enemy1.spawn_pos1 = 400;
     enemy1.spawn_pos2 = 650;
     enemy1.x = enemy1.spawn_pos2;
-    enemy1.y = S_H / 2 - 60;
+    enemy1.y = GAME_HEIGHT / 2 - 60;
     enemy1.h = 200;
     enemy1.w = 200;
     enemy1.is_alive = true;
-    enemy1.txr.height = enemy1.h;
-    enemy1.txr.width = enemy1.w;
     enemy1.hb.x = enemy1.x;
     enemy1.hb.y = enemy1.y;
     enemy1.hb.box = Rectangle{ enemy1.x + 20, enemy1.y + 40, enemy1.w - 40, enemy1.h - 40 };
@@ -447,12 +473,10 @@ void ResetLevel1()
     enemy2.spawn_pos1 = 970;
     enemy2.spawn_pos2 = 1270;
     enemy2.x = enemy2.spawn_pos2;
-    enemy2.y = S_H / 2 - 60;
+    enemy2.y = GAME_HEIGHT / 2 - 60;
     enemy2.h = 200;
     enemy2.w = 200;
     enemy2.is_alive = true;
-    enemy2.txr.height = enemy2.h;
-    enemy2.txr.width = enemy2.w;
     enemy2.hb.x = enemy2.x;
     enemy2.hb.y = enemy2.y;
     enemy2.hb.box = Rectangle{ enemy2.x + 20, enemy2.y + 40, enemy2.w - 40, enemy2.h - 40 };
@@ -462,27 +486,23 @@ void ResetLevel1()
     enemy3.spawn_pos1 = 1550;
     enemy3.spawn_pos2 = 1550;
     enemy3.x = enemy3.spawn_pos2;
-    enemy3.y = S_H / 2 - 60;
+    enemy3.y = GAME_HEIGHT / 2 - 60;
     enemy3.h = 200;
     enemy3.w = 200;
     enemy3.is_alive = true;
-    enemy3.txr.height = enemy3.h;
-    enemy3.txr.width = enemy3.w;
     enemy3.hb.x = enemy3.x;
     enemy3.hb.y = enemy3.y;
     enemy3.hb.box = Rectangle{ enemy3.x + 20, enemy3.y + 40, enemy3.w - 40, enemy3.h - 40 };
     enemy3.behavior = enemy_3_control;
     enemy3.bullet.is_active = false;
 
-    enemy4.spawn_pos1 = S_W - 130;
-    enemy4.spawn_pos2 = S_W - 130;
+    enemy4.spawn_pos1 = GAME_WIDTH - 130;
+    enemy4.spawn_pos2 = GAME_WIDTH - 130;
     enemy4.x = enemy4.spawn_pos1;
     enemy4.y = 311;
     enemy4.h = 200;
     enemy4.w = 200;
     enemy4.is_alive = true;
-    enemy4.txr.height = enemy4.h;
-    enemy4.txr.width = enemy4.w;
     enemy4.hb.x = enemy4.x;
     enemy4.hb.y = enemy4.y;
     enemy4.hb.box = Rectangle{ enemy4.x + 20, enemy4.y + 40, enemy4.w - 40, enemy4.h - 40 };
@@ -537,7 +557,7 @@ void update_bullet(bullet& b)
         b.hb.y = b.y;
         b.hb.box.x = b.x;
         b.hb.box.y = b.y;
-        if (b.x < 0 || b.x > S_W || b.y < 0 || b.y > S_H)
+        if (b.x < 0 || b.x > GAME_WIDTH || b.y < 0 || b.y > GAME_HEIGHT)
             b.is_active = false;
     }
 }
@@ -645,7 +665,7 @@ void enemy_3_control(enemy& enm)
         {
             enm.bullet.vy = 12.0f;
         }
-        if (enm.bullet.y > S_H)
+        if (enm.bullet.y > GAME_HEIGHT)
         {
             enm.bullet.is_active = false;
         }
@@ -824,7 +844,7 @@ void controller_player_lvl_1(player& plr)
         else
             plr.txr = plr.txr_gun_right;
     }
-    if (plr.x > S_W - plr.w + 70) plr.x = S_W - plr.w + 69;
+    if (plr.x > GAME_WIDTH - plr.w + 70) plr.x = GAME_WIDTH - plr.w + 69;
     if (plr.x < 45) plr.x = 46;
     plr.hb.x = plr.x;
     plr.hb.y = plr.y;
@@ -843,18 +863,18 @@ void move_lvl_1_backgrounds()
     mountains.x += 0.15f;
     mountains2.x += 0.15f;
     
-    if (clouds.x >= S_W)
-        clouds.x = -S_W;
-    if (clouds2.x >= S_W)
-        clouds2.x = -S_W;
-    if (bridge.x >= S_W)
-        bridge.x = -S_W;
-    if (bridge2.x >= S_W)
-        bridge2.x = -S_W;
-    if (mountains.x >= S_W)
-        mountains.x = -S_W;
-    if (mountains2.x >= S_W)
-        mountains2.x = -S_W;
+    if (clouds.x >= GAME_WIDTH)
+        clouds.x = -GAME_WIDTH;
+    if (clouds2.x >= GAME_WIDTH)
+        clouds2.x = -GAME_WIDTH;
+    if (bridge.x >= GAME_WIDTH)
+        bridge.x = -GAME_WIDTH;
+    if (bridge2.x >= GAME_WIDTH)
+        bridge2.x = -GAME_WIDTH;
+    if (mountains.x >= GAME_WIDTH)
+        mountains.x = -GAME_WIDTH;
+    if (mountains2.x >= GAME_WIDTH)
+        mountains2.x = -GAME_WIDTH;
 }
 
 void move_obstacles_lvl_1()
@@ -923,7 +943,7 @@ void handle_enemy_respawn()
             enemy1.x = enemy1.spawn_pos1;
         else
             enemy1.x = enemy1.spawn_pos2;
-        enemy1.y = S_H / 2 - 60;
+        enemy1.y = GAME_HEIGHT / 2 - 60;
         enemy1.hb.box = Rectangle{ enemy1.x + 20, enemy1.y + 40, enemy1.w - 40, enemy1.h - 40 };
         enemy1.bullet.is_active = false;
     }
@@ -936,7 +956,7 @@ void handle_enemy_respawn()
             enemy2.x = enemy2.spawn_pos1;
         else
             enemy2.x = enemy2.spawn_pos2;
-        enemy2.y = S_H / 2 - 60;
+        enemy2.y = GAME_HEIGHT / 2 - 60;
         enemy2.hb.box = Rectangle{ enemy2.x + 20, enemy2.y + 40, enemy2.w - 40, enemy2.h - 40 };
         enemy2.bullet.is_active = false;
     }
@@ -949,7 +969,7 @@ void handle_enemy_respawn()
             enemy3.x = enemy3.spawn_pos1;
         else
             enemy3.x = enemy3.spawn_pos2;
-        enemy3.y = S_H / 2 - 60;
+        enemy3.y = GAME_HEIGHT / 2 - 60;
         enemy3.hb.box = Rectangle{ enemy3.x + 20, enemy3.y + 40, enemy3.w - 40, enemy3.h - 40 };
         enemy3.bullet.is_active = false;
     }
@@ -989,6 +1009,7 @@ void handle_collisions()
             score += 1000;
             respawnTimer1 = GetTime();
             respawnDelay1 = GetRandomValue(5, 10);
+            if (has_sfx) PlaySound(enemyDieSfx[0]);
         }
         
         if (enemy2.is_alive && CheckCollisionRecs(bullets[i].hb.box, enemy2.hb.box))
@@ -998,6 +1019,7 @@ void handle_collisions()
             score += 1000;
             respawnTimer2 = GetTime();
             respawnDelay2 = GetRandomValue(5, 10);
+            if (has_sfx) PlaySound(enemyDieSfx[1]);
         }
         
         if (enemy3.is_alive && CheckCollisionRecs(bullets[i].hb.box, enemy3.hb.box))
@@ -1007,6 +1029,7 @@ void handle_collisions()
             score += 1000;
             respawnTimer3 = GetTime();
             respawnDelay3 = GetRandomValue(5, 10);
+            if (has_sfx) PlaySound(enemyDieSfx[2]);
         }
         
         if (enemy4.is_alive && CheckCollisionRecs(bullets[i].hb.box, enemy4.hb.box))
@@ -1016,6 +1039,7 @@ void handle_collisions()
             score += 1000;
             respawnTimer4 = GetTime();
             respawnDelay4 = GetRandomValue(5, 10);
+            if (has_sfx) PlaySound(enemyDieSfx[3]);
         }
     }
 
@@ -1218,6 +1242,11 @@ void UpdateGameOver()
     {
         currentScreen = TITLE;
     }
+    else if (IsKeyPressed(KEY_ENTER))
+    {
+        ResetLevel1();
+        currentScreen = LEVEL_1;
+    }
 }
 
 void UpdateUnderDevelopment()
@@ -1234,61 +1263,113 @@ void UpdateUnderDevelopment()
 void DrawTitle()
 {
     ClearBackground(RAYWHITE);
-    DrawRectangle((int)btn_title_settings.x, (int)btn_title_settings.y, (int)btn_title_settings.width, (int)btn_title_settings.height, PINK);
-    DrawRectangle((int)btn_title_quit.x, (int)btn_title_quit.y, (int)btn_title_quit.width, (int)btn_title_quit.height, BLUE);
-    DrawRectangle((int)btn_title_start.x, (int)btn_title_start.y, (int)btn_title_start.width, (int)btn_title_start.height, RED);
-    DrawTexture(title_bg.txr, (int)title_bg.x, (int)title_bg.y, WHITE);
+    DrawTexturePro(title_bg.txr,
+        Rectangle{0, 0, (float)title_bg.txr.width, (float)title_bg.txr.height},
+        Rectangle{title_bg.x, title_bg.y, (float)title_bg.w, (float)title_bg.h},
+        Vector2{0, 0}, 0.0f, WHITE);
 }
 
 void DrawLevelSelect()
 {
     ClearBackground(RAYWHITE);
-    DrawRectangle((int)btn_quit_lvl_select.x, (int)btn_quit_lvl_select.y, (int)btn_quit_lvl_select.width, (int)btn_quit_lvl_select.height, BLUE);
-    DrawRectangle((int)btn_lvl1.x, (int)btn_lvl1.y, (int)btn_lvl1.width, (int)btn_lvl1.height, RED);
-    DrawRectangle((int)btn_lvl2.x, (int)btn_lvl2.y, (int)btn_lvl2.width, (int)btn_lvl2.height, RED);
-    DrawRectangle((int)btn_lvl3.x, (int)btn_lvl3.y, (int)btn_lvl3.width, (int)btn_lvl3.height, RED);
-    DrawTexture(lvl_select_bg.txr, (int)lvl_select_bg.x, (int)lvl_select_bg.y, WHITE);
-    DrawText("LEVEL SELECT", S_W / 2 - 400, S_H / 2 - 50, 100, WHITE);
-    DrawText("LEVEL 1", (int)btn_lvl1.x + 70, (int)btn_lvl1.y + 100, 120, LIGHTGRAY);
-    DrawText("LEVEL 3", (int)btn_lvl2.x + 50, (int)btn_lvl2.y + 100, 120, LIGHTGRAY);
-    DrawText("LEVEL 2", (int)btn_lvl3.x + 50, (int)btn_lvl3.y + 100, 120, LIGHTGRAY);
-    DrawText("QUIT", (int)btn_quit_lvl_select.x + 150, (int)btn_quit_lvl_select.y + 100, 120, BLACK);
+    DrawTexturePro(lvl_select_bg.txr,
+        Rectangle{0, 0, (float)lvl_select_bg.txr.width, (float)lvl_select_bg.txr.height},
+        Rectangle{lvl_select_bg.x, lvl_select_bg.y, (float)lvl_select_bg.w, (float)lvl_select_bg.h},
+        Vector2{0, 0}, 0.0f, WHITE);
 }
 
 void DrawLevel1()
 {
     ClearBackground(SKYBLUE);
-    DrawTexture(sky.txr, (int)sky.x, (int)sky.y, WHITE);
-    DrawTexture(mountains.txr, (int)mountains.x, (int)mountains.y, WHITE);
-    DrawTexture(mountains2.txr, (int)mountains2.x, (int)mountains2.y, WHITE);
-    DrawTexture(clouds.txr, (int)clouds.x, (int)clouds.y, WHITE);
-    DrawTexture(clouds2.txr, (int)clouds2.x, (int)clouds2.y, WHITE);
-    DrawTexture(sign1.txr, (int)sign1.x, (int)sign1.y, WHITE);
-    DrawTexture(bridge.txr, (int)bridge.x, (int)bridge.y, WHITE);
-    DrawTexture(bridge2.txr, (int)bridge2.x, (int)bridge2.y, WHITE);
-    DrawTexture(train.txr, (int)train.x, (int)train.y, WHITE);
-    DrawTexture(plr.txr, (int)plr.x, (int)plr.y, WHITE);
-    DrawTexture(sign2.txr, (int)sign2.x, (int)sign2.y, WHITE);
+    
+    // Draw backgrounds with proper scaling
+    DrawTexturePro(sky.txr,
+        Rectangle{0, 0, (float)sky.txr.width, (float)sky.txr.height},
+        Rectangle{sky.x, sky.y, (float)sky.w, (float)sky.h},
+        Vector2{0, 0}, 0.0f, WHITE);
+    
+    DrawTexturePro(mountains.txr,
+        Rectangle{0, 0, (float)mountains.txr.width, (float)mountains.txr.height},
+        Rectangle{mountains.x, mountains.y, (float)mountains.w, (float)mountains.h},
+        Vector2{0, 0}, 0.0f, WHITE);
+    
+    DrawTexturePro(mountains2.txr,
+        Rectangle{0, 0, (float)mountains2.txr.width, (float)mountains2.txr.height},
+        Rectangle{mountains2.x, mountains2.y, (float)mountains2.w, (float)mountains2.h},
+        Vector2{0, 0}, 0.0f, WHITE);
+    
+    DrawTexturePro(clouds.txr,
+        Rectangle{0, 0, (float)clouds.txr.width, (float)clouds.txr.height},
+        Rectangle{clouds.x, clouds.y, (float)clouds.w, (float)clouds.h},
+        Vector2{0, 0}, 0.0f, WHITE);
+    
+    DrawTexturePro(clouds2.txr,
+        Rectangle{0, 0, (float)clouds2.txr.width, (float)clouds2.txr.height},
+        Rectangle{clouds2.x, clouds2.y, (float)clouds2.w, (float)clouds2.h},
+        Vector2{0, 0}, 0.0f, WHITE);
+    
+    DrawTexturePro(sign1.txr,
+        Rectangle{0, 0, (float)sign1.txr.width, (float)sign1.txr.height},
+        Rectangle{sign1.x, sign1.y, (float)sign1.w, (float)sign1.h},
+        Vector2{0, 0}, 0.0f, WHITE);
+    
+    DrawTexturePro(bridge.txr,
+        Rectangle{0, 0, (float)bridge.txr.width, (float)bridge.txr.height},
+        Rectangle{bridge.x, bridge.y, (float)bridge.w, (float)bridge.h},
+        Vector2{0, 0}, 0.0f, WHITE);
+    
+    DrawTexturePro(bridge2.txr,
+        Rectangle{0, 0, (float)bridge2.txr.width, (float)bridge2.txr.height},
+        Rectangle{bridge2.x, bridge2.y, (float)bridge2.w, (float)bridge2.h},
+        Vector2{0, 0}, 0.0f, WHITE);
+    
+    DrawTexturePro(train.txr,
+        Rectangle{0, 0, (float)train.txr.width, (float)train.txr.height},
+        Rectangle{train.x, train.y, (float)train.w, (float)train.h},
+        Vector2{0, 0}, 0.0f, WHITE);
+    
+    // Draw player with proper scaling
+    DrawTexturePro(plr.txr,
+        Rectangle{0, 0, (float)plr.txr.width, (float)plr.txr.height},
+        Rectangle{plr.x, plr.y, plr.w, plr.h},
+        Vector2{0, 0}, 0.0f, WHITE);
+    
+    DrawTexturePro(sign2.txr,
+        Rectangle{0, 0, (float)sign2.txr.width, (float)sign2.txr.height},
+        Rectangle{sign2.x, sign2.y, (float)sign2.w, (float)sign2.h},
+        Vector2{0, 0}, 0.0f, WHITE);
 
-    // Draw enemies
+    // Draw enemies with proper scaling
     if (enemy1.is_alive)
     {
-        DrawTexture(enemy1.txr, (int)enemy1.x, (int)enemy1.y, WHITE);
+        DrawTexturePro(enemy1.txr,
+            Rectangle{0, 0, (float)enemy1.txr.width, (float)enemy1.txr.height},
+            Rectangle{enemy1.x, enemy1.y, enemy1.w, enemy1.h},
+            Vector2{0, 0}, 0.0f, WHITE);
         draw_enemy_bullet(enemy1);
     }
     if (enemy2.is_alive)
     {
-        DrawTexture(enemy2.txr, (int)enemy2.x, (int)enemy2.y, WHITE);
+        DrawTexturePro(enemy2.txr,
+            Rectangle{0, 0, (float)enemy2.txr.width, (float)enemy2.txr.height},
+            Rectangle{enemy2.x, enemy2.y, enemy2.w, enemy2.h},
+            Vector2{0, 0}, 0.0f, WHITE);
         draw_enemy_bullet(enemy2);
     }
     if (enemy3.is_alive)
     {
-        DrawTexture(enemy3.txr, (int)enemy3.x, (int)enemy3.y, WHITE);
+        DrawTexturePro(enemy3.txr,
+            Rectangle{0, 0, (float)enemy3.txr.width, (float)enemy3.txr.height},
+            Rectangle{enemy3.x, enemy3.y, enemy3.w, enemy3.h},
+            Vector2{0, 0}, 0.0f, WHITE);
         draw_enemy_bullet(enemy3);
     }
     if (enemy4.is_alive)
     {
-        DrawTexture(enemy4.txr, (int)enemy4.x, (int)enemy4.y, WHITE);
+        DrawTexturePro(enemy4.txr,
+            Rectangle{0, 0, (float)enemy4.txr.width, (float)enemy4.txr.height},
+            Rectangle{enemy4.x, enemy4.y, enemy4.w, enemy4.h},
+            Vector2{0, 0}, 0.0f, WHITE);
         draw_enemy_bullet(enemy4);
     }
 
@@ -1304,7 +1385,7 @@ void DrawLevel1()
     // Draw warning for signs
     if (!sign1.has_spawned && !sign2.has_spawned && sign_spawn_timer >= sign_spawn_delay && sign_spawn_timer < sign_spawn_delay + 2.0f)
     {
-        DrawText("WARNING: A sign is about to appear!", S_W / 2 - 500, S_H / 2 - 200, 50, RED);
+        DrawText("WARNING: A sign is about to appear!", GAME_WIDTH / 2 - 500, GAME_HEIGHT / 2 - 200, 50, RED);
     }
 
     // Draw score
@@ -1314,26 +1395,27 @@ void DrawLevel1()
 void DrawPause()
 {
     ClearBackground(BLACK);
-    DrawText("GAME PAUSED", 150, 20, 100, WHITE);
-    DrawText("Press Enter to continue", 200, S_H / 2, 50, DARKGREEN);
-    DrawText("Press Q to quit", 200, S_H / 2 + 50, 50, MAROON);
+    DrawText("GAME PAUSED", GAME_WIDTH / 2 - 350, 100, 80, WHITE);
+    DrawText("Press ENTER to continue", GAME_WIDTH / 2 - 280, GAME_HEIGHT / 2, 40, DARKGREEN);
+    DrawText("Press Q to quit to menu", GAME_WIDTH / 2 - 280, GAME_HEIGHT / 2 + 60, 40, MAROON);
 }
 
 void DrawGameOver()
 {
     ClearBackground(BLACK);
-    DrawText("GAME OVER", S_W / 2 - 300, S_H / 2 - 100, 100, RED);
-    DrawText(TextFormat("YOUR SCORE: %lld", score), S_W / 2 - 200, S_H / 2, 50, GREEN);
-    DrawText("PRESS Q TO RETURN", S_W / 2 - 200, S_H / 2 + 100, 50, WHITE);
+    DrawText("GAME OVER", GAME_WIDTH / 2 - 300, GAME_HEIGHT / 2 - 100, 100, RED);
+    DrawText(TextFormat("YOUR SCORE: %lld", score), GAME_WIDTH / 2 - 250, GAME_HEIGHT / 2, 50, GREEN);
+    DrawText("Press ENTER to retry", GAME_WIDTH / 2 - 220, GAME_HEIGHT / 2 + 100, 40, LIGHTGRAY);
+    DrawText("Press Q to quit to menu", GAME_WIDTH / 2 - 250, GAME_HEIGHT / 2 + 150, 40, MAROON);
 }
 
 void DrawUnderDevelopment()
 {
     ClearBackground(BLACK);
-    DrawText("THIS GAME IS CURRENTLY UNDERDEVELOPMENT", S_W / 2 - 600, S_H / 2 - 100, 50, WHITE);
-    DrawText("PLEASE WAIT FOR FULL RELEASE", S_W / 2 - 370, S_H / 2 - 50, 50, WHITE);
-    DrawText("IN THE MEANWHILE ENJOY LEVEL 1", S_W / 2 - 385, S_H / 2, 50, GREEN);
-    DrawText("PRESS Q TO RETURN", S_W / 2 - 230, S_H / 2 + 100, 50, MAROON);
+    DrawText("UNDER DEVELOPMENT", GAME_WIDTH / 2 - 450, GAME_HEIGHT / 2 - 150, 70, WHITE);
+    DrawText("This level is not yet available", GAME_WIDTH / 2 - 380, GAME_HEIGHT / 2 - 50, 50, LIGHTGRAY);
+    DrawText("In the meantime, enjoy Level 1!", GAME_WIDTH / 2 - 370, GAME_HEIGHT / 2 + 20, 50, GREEN);
+    DrawText("Press Q to return", GAME_WIDTH / 2 - 230, GAME_HEIGHT / 2 + 120, 50, MAROON);
 }
 
 // =============================================================================
@@ -1364,8 +1446,8 @@ void UpdateDrawFrame()
         break;
     }
 
-    // Draw
-    BeginDrawing();
+    // Draw to virtual screen
+    BeginTextureMode(target);
     switch (currentScreen)
     {
     case TITLE:
@@ -1387,6 +1469,25 @@ void UpdateDrawFrame()
         DrawUnderDevelopment();
         break;
     }
+    EndTextureMode();
+
+    // Draw virtual screen to actual screen with letterboxing
+    BeginDrawing();
+    ClearBackground(BLACK);
+    
+    // Calculate scale for letterboxing
+    float scaleX = (float)screenWidth / GAME_WIDTH;
+    float scaleY = (float)screenHeight / GAME_HEIGHT;
+    scale = fminf(scaleX, scaleY);
+    
+    float offsetX = (screenWidth - (GAME_WIDTH * scale)) * 0.5f;
+    float offsetY = (screenHeight - (GAME_HEIGHT * scale)) * 0.5f;
+    
+    Rectangle sourceRec = { 0.0f, 0.0f, (float)target.texture.width, -(float)target.texture.height };
+    Rectangle destRec = { offsetX, offsetY, GAME_WIDTH * scale, GAME_HEIGHT * scale };
+    
+    DrawTexturePro(target.texture, sourceRec, destRec, Vector2{ 0, 0 }, 0.0f, WHITE);
+    
     EndDrawing();
 }
 
@@ -1395,10 +1496,10 @@ void UpdateDrawFrame()
 // =============================================================================
 int main() 
 {
-    S_W = 1920;
-    S_H = 1080;
+    // Set window to be resizable
+    SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_VSYNC_HINT);
     
-    InitWindow(S_W, S_H, "DARK REFLECTION");
+    InitWindow(screenWidth, screenHeight, "DARK REFLECTION");
     InitAudioDevice();
     
     // Load all resources once
@@ -1413,10 +1514,16 @@ int main()
     // Desktop: Standard game loop
     while (!WindowShouldClose())
     {
+        // Update window size if changed
+        screenWidth = GetScreenWidth();
+        screenHeight = GetScreenHeight();
+        
         UpdateDrawFrame();
     }
     #endif
 
+    // Cleanup
+    UnloadRenderTexture(target);
     CloseAudioDevice();
     CloseWindow();
     return 0;
